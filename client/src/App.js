@@ -1,30 +1,29 @@
-import React, {
-    Component
-} from "react";
-import IPFSInboxContract from './IPFSInbox.json';
-import SimpleStorageContract from "./contracts/SimpleStorage.json";
+import React, { Component } from "react";
+import IPFSInboxContract from "./IPFSInbox.json";
 import getWeb3 from "./getWeb3";
 import truffleContract from "truffle-contract";
-import ipfs from './ipfs';
+import ipfs from "./ipfs";
 
 import "./App.css";
 
-const Contract = truffleContract(IPFSInboxContract)
-Contract.setProvider(web3.currentProvider)
-const instance = await Contract.deployed()
-
 class App extends Component {
     constructor(props) {
-        super(props)
+        super(props);
         this.state = {
-            storageValue: 0,
             web3: null,
             accounts: null,
             contract: null,
-            ipfsHash: null
+            ipfsHash: null,
+            formIPFS: "",
+            formAddress: "",
+            receivedIPFS: "",
         };
-    }
 
+        this.handleChangeAddress = this.handleChangeAddress.bind(this);
+        this.handleChangeIPFS = this.handleChangeIPFS.bind(this);
+        this.handleSend = this.handleSend.bind(this);
+        this.handleReceiveIPFS = this.handleReceiveIPFS.bind(this);
+    }
 
     componentDidMount = async() => {
         try {
@@ -35,92 +34,138 @@ class App extends Component {
             const accounts = await web3.eth.getAccounts();
 
             // Get the contract instance.
-            const networkId = await web3.eth.net.getId();
-            const deployedNetwork = SimpleStorageContract.networks[networkId];
-            const instance = new web3.eth.Contract(
-                SimpleStorageContract.abi,
-                deployedNetwork && deployedNetwork.address,
-            );
+            const Contract = truffleContract(IPFSInboxContract);
+            Contract.setProvider(web3.currentProvider);
+            const instance = await Contract.deployed();
 
             // Set web3, accounts, and contract to the state, and then proceed with an
             // example of interacting with the contract's methods.
             this.setState({
                 web3,
                 accounts,
-                contract: instance
+                contract: instance,
             });
         } catch (error) {
             // Catch any errors for any of the above operations.
             alert(
-                `Failed to load web3, accounts, or contract. Check console for details.`,
+                `Failed to load web3, accounts, or contract. Check console for details.`
             );
             console.error(error);
         }
     };
 
     captureFile = (event) => {
-        event.stopPropagation()
-        event.preventDefault()
-        const file = evene.target.files[0]
-        let reader = new window.FileReader()
-        reader.readAsArrayBuffer(file)
-        reader.onloadend = () => this.convertToBuffer(reader)
-    }
+        event.stopPropagation();
+        event.preventDefault();
+        const file = evene.target.files[0];
+        let reader = new window.FileReader();
+        reader.readAsArrayBuffer(file);
+        reader.onloadend = () => this.convertToBuffer(reader);
+    };
 
     // helper function for turning a file into a buffer
     convertToBuffer = async(reader) => {
-        const buffer = await Buffer.from(reader.result)
+        const buffer = await Buffer.from(reader.result);
         this.setState({
-            buffer
-        })
-    }
+            buffer,
+        });
+    };
 
     onIPFSSubmit = async(event) => {
-        event.preventDefault()
+        event.preventDefault();
         await ipfs.add(this.state.buffer, (err, ipfsHash) => {
-            console.log(err, ipfsHash)
+            console.log(err, ipfsHash);
             this.setState({
-                ipfsHash: ipfsHash[0].hash
-            })
-        })
-    }
+                ipfsHash: ipfsHash[0].hash,
+            });
+        });
+    };
 
-    // runExample = async () => {
-    //   const { accounts, contract } = this.state;
+    setEventListeners = () => {
+        this.state.contract.inboxResponse().on("data", (result) => {
+            this.setState({ receivedIPFS: result.args[0] });
+        });
+    };
 
-    //   // Stores a given value, 5 by default.
-    //   await contract.methods.set(5).send({ from: accounts[0] });
+    handleChangeAddress = (event) => {
+        this.setState({ formAddress: event.target.value });
+    };
 
-    //   // Get the value from the contract to prove it worked.
-    //   const response = await contract.methods.get().call();
+    handleChangeIPFS = (event) => {
+        this.setState({ formIPFS: event.target.value });
+    };
 
-    //   // Update state with the result.
-    //   this.setState({ storageValue: response });
-    // };
+    handleSend = (event) => {
+        event.preventDefault();
+        const contract = this.state.contract;
+        const account = this.state.accounts[0];
+
+        document.getElementById("new-notification-form").reset();
+        this.setState({ showNotification: true });
+        contract
+            .sentIPFS(this.state.formAddress, this.state.formIPFS, { from: account })
+            .then((result) => {
+                this.setState({ formAddress: "" });
+                this.setState({ formIPFS: "" });
+            });
+    };
+
+    handleReceiveIPFS = (event) => {
+        event.preventDefault();
+        const contract = this.state.contract;
+        const account = this.state.accounts[0];
+        contract.checkInbox({ from: account });
+    };
 
     render() {
         if (!this.state.web3) {
             return <div > Loading Web3, accounts, and contract... < /div>;
         }
         return ( <
-            div className = "App" > {
+            div className = "App" > { " " } {
                 /* <h1>Good to Go!</h1>
-                        <p>Your Truffle Box is installed and ready.</p> */
-            } < h2 > 1. Add a file to IPFS here < /h2>  <
+                                        <p>Your Truffle Box is installed and ready.</p> */
+            } { " " } <
+            h2 > 1. Add a file to IPFS here < /h2> <
             form id = "ipfs-hash-form"
             className = "scep-form"
-            onSubmit = {
-                this.onIPFSSubmit
-            } >
+            onSubmit = { this.onIPFSSubmit } >
             <
             input type = "file"
-            onChange = {
-                this.captureFile
-            }
-            /> <button type = "submit"> Send it </button > < /form > <
-            p > The IPFS hash is: {
-                this.state.ipfsHash
-            } < /p> </div >
+            onChange = { this.captureFile }
+            />{" "} <
+            button type = "submit" > Send it < /button>{" "} <
+            /form> <
+            p > The IPFS hash is: { this.state.ipfsHash } < /p> <
+            h2 > 2. Send Notification here. < /h2> <
+            form id = "new-notification-form"
+            className = "scep-form"
+            onSubmit = { this.handleSend } >
+            <
+            label >
+            Receiver Address:
+            <
+            input type = "text"
+            value = { this.state.value }
+            onChange = { this.handleChangeAddress }
+            /> <
+            /label> <
+            label >
+            IPFS Address:
+            <
+            input type = "text"
+            value = { this.state.value }
+            onChange = { this.handleChangeIPFS }
+            /> <
+            /label> <
+            input type = "submit"
+            value = "submit" / >
+            <
+            /form> <
+            h2 > 3. Receive Notifications < /h2> <
+            button onClick = { this.handleReceiveIPFS } > Receive IPFS < /button> <
+            p > { this.state.receivedIPFS } < /p> <
+            /div>
         );
     }
 }
